@@ -5,8 +5,8 @@ env/
 .env/
 
 #Excel files
-*.xlsx
-*.csv
+# *.xlsx
+# *.csv
 
 # Python
 __pycache__/
