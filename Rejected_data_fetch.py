@@ -54,7 +54,7 @@ def fetch_bre_data(connection) -> pd.DataFrame:
         FROM {table}
         WHERE http_path = %s
           AND created_at >= '2026-02-01 00:00:00'
-          AND created_at < '2026-03-01 00:00:00'
+          AND created_at < '2026-02-23 13:39:00'
     """.format(
         table=TABLE_NAME
     )
@@ -143,6 +143,40 @@ def parse_response_and_filter(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
     return applicant_df, combined_df
 
 
+def log_mode_status_counts(df: pd.DataFrame) -> None:
+    """
+    Parse response_payload, count cases by evaluation_mode and bre_status (accept/reject),
+    and log the counts.
+    """
+    applicant_accept = applicant_reject = combined_accept = combined_reject = 0
+
+    for _, row in df.iterrows():
+        try:
+            payload = row["response_payload"]
+            if payload is None or (isinstance(payload, str) and payload.strip() == ""):
+                continue
+
+            data = json.loads(payload) if isinstance(payload, str) else payload
+            mode = data.get("evaluation_mode")
+            status = data.get("bre_status")
+
+            if mode == "applicant" and status == "accept":
+                applicant_accept += 1
+            elif mode == "applicant" and status == "reject":
+                applicant_reject += 1
+            elif mode == "combined" and status == "accept":
+                combined_accept += 1
+            elif mode == "combined" and status == "reject":
+                combined_reject += 1
+
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    logger.info("Mode / status counts:")
+    logger.info("  applicant | accept: %d, reject: %d", applicant_accept, applicant_reject)
+    logger.info("  combined  | accept: %d, reject: %d", combined_accept, combined_reject)
+
+
 def main():
     """Main execution flow."""
     password = MYSQL_CONFIG["password"]
@@ -163,35 +197,38 @@ def main():
         fetched_len = len(df)
         logger.info("Fetched raw data: length=%d rows", fetched_len)
 
+        if not df.empty:
+            log_mode_status_counts(df)
+
         if df.empty:
             logger.info("No data found. Exiting.")
             return 0
 
-        logger.info("Parsing response_payload and filtering...")
-        applicant_df, combined_df = parse_response_and_filter(df)
+        # logger.info("Parsing response_payload and filtering...")
+        # applicant_df, combined_df = parse_response_and_filter(df)
 
-        applicant_len = len(applicant_df)
-        combined_len = len(combined_df)
-        total_len = applicant_len + combined_len
+        # applicant_len = len(applicant_df)
+        # combined_len = len(combined_df)
+        # total_len = applicant_len + combined_len
 
-        logger.info(
-            "Processed datasets: applicant_reject length=%d rows, combined_reject length=%d rows, total=%d rows",
-            applicant_len,
-            combined_len,
-            total_len,
-        )
+        # logger.info(
+        #     "Processed datasets: applicant_reject length=%d rows, combined_reject length=%d rows, total=%d rows",
+        #     applicant_len,
+        #     combined_len,
+        #     total_len,
+        # )
 
-        output_dir = Path(__file__).parent
-        applicant_path = output_dir / "applicant_reject_table.xlsx"
-        combined_path = output_dir / "combined_reject_table.xlsx"
+        # output_dir = Path(__file__).parent
+        # applicant_path = output_dir / "applicant_reject_table.xlsx"
+        # combined_path = output_dir / "combined_reject_table.xlsx"
 
-        applicant_df.to_excel(applicant_path, index=False, engine="openpyxl")
-        logger.info("Saved applicant_reject_table.xlsx (length=%d rows)", applicant_len)
+        # applicant_df.to_excel(applicant_path, index=False, engine="openpyxl")
+        # logger.info("Saved applicant_reject_table.xlsx (length=%d rows)", applicant_len)
 
-        combined_df.to_excel(combined_path, index=False, engine="openpyxl")
-        logger.info("Saved combined_reject_table.xlsx (length=%d rows)", combined_len)
+        # combined_df.to_excel(combined_path, index=False, engine="openpyxl")
+        # logger.info("Saved combined_reject_table.xlsx (length=%d rows)", combined_len)
 
-        logger.info("Done!")
+        # logger.info("Done!")
         return 0
 
     finally:
